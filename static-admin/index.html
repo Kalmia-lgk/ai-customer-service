@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理端 - AI 智能客服</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/admin/css/admin.css">
+</head>
+<body>
+    <!-- ========== 登录页 ========== -->
+    <div id="login-page">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="login-icon">🤖</div>
+                <h1>AI Customer Service</h1>
+                <p>Brand Admin Console</p>
+            </div>
+
+            <!-- 登录/注册切换：默认显示注册 -->
+            <div class="auth-tabs">
+                <button class="auth-tab" id="tab-login-btn">Login</button>
+                <button class="auth-tab active" id="tab-register-btn">Register</button>
+            </div>
+
+            <!-- ===== 登录表单 ===== -->
+            <form id="login-form" style="display:none;">
+                <div class="form-group">
+                    <label>Email</label>
+                    <input type="email" id="login-email" placeholder="your@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Password</label>
+                    <input type="password" id="login-password" placeholder="Enter password" required>
+                </div>
+                <button type="submit" class="btn-primary">Login</button>
+                <p class="login-error" id="login-error"></p>
+            </form>
+
+            <!-- ===== 注册表单（默认显示） ===== -->
+            <form id="register-form">
+                <div class="form-group">
+                    <label>Email *</label>
+                    <input type="email" id="reg-email" placeholder="your@email.com" required>
+                </div>
+                <div class="form-group">
+                    <label>Name</label>
+                    <input type="text" id="reg-name" placeholder="Optional">
+                </div>
+                <div class="form-group">
+                    <label>Password *</label>
+                    <input type="password" id="reg-password" placeholder="Min 6 characters" minlength="6" required>
+                </div>
+                <div class="form-group">
+                    <label>Confirm Password *</label>
+                    <input type="password" id="reg-password2" placeholder="Re-enter password" required>
+                </div>
+                <button type="submit" class="btn-primary">Register</button>
+                <p class="login-error" id="register-error"></p>
+                <p style="font-size:0.72rem;color:var(--slate-400);margin-top:0.5rem;text-align:center;">
+                    First user becomes Super Admin
+                </p>
+            </form>
+        </div>
+    </div>
+
+    <!-- ========== 仪表盘 ========== -->
+    <div id="dashboard-page" style="display:none;">
+        <nav class="top-nav">
+            <div class="nav-brand">🤖 AI 客服 · 管理端</div>
+            <div class="nav-tabs" id="nav-tabs">
+                <button class="nav-tab active" data-tab="escalations">🎫 工单队列 <span class="badge" id="badge-escalations">0</span></button>
+                <button class="nav-tab" data-tab="knowledge">📚 知识库</button>
+                <button class="nav-tab" data-tab="conversations">💬 会话监控</button>
+                <button class="nav-tab" data-tab="stats">📊 统计</button>
+                <button class="nav-tab" data-tab="settings" id="nav-settings">⚙️ 设置</button>
+                <button class="nav-tab" data-tab="users" id="nav-users" style="display:none;">👥 用户管理</button>
+            </div>
+            <div class="nav-user">
+                <span id="nav-staff-name">User</span>
+                <span style="font-size:0.65rem;color:var(--text3);" id="nav-role-badge"></span>
+                <button class="btn-logout" id="btn-logout">退出</button>
+            </div>
+        </nav>
+
+        <div class="dashboard-content">
+            <!-- 工单队列 Tab -->
+            <div class="tab-panel active" id="tab-escalations">
+                <div class="escalation-layout">
+                    <div class="ticket-list-panel">
+                        <div class="panel-header">
+                            <h3>工单列表</h3>
+                            <select id="filter-status">
+                                <option value="pending">待处理</option>
+                                <option value="all">全部</option>
+                                <option value="waiting">等待中</option>
+                                <option value="in_progress">处理中</option>
+                                <option value="resolved">已解决</option>
+                            </select>
+                        </div>
+                        <div id="ticket-list"></div>
+                    </div>
+                    <div class="ticket-detail-panel" id="ticket-detail">
+                        <div class="empty-state">
+                            <div class="empty-icon">📋</div>
+                            <div class="empty-text">选择一个工单查看详情</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 知识库 Tab -->
+            <div class="tab-panel" id="tab-knowledge">
+                <div class="kb-panel">
+                    <div class="upload-section">
+                        <div class="upload-dropzone" id="upload-dropzone">
+                            <div class="upload-icon">📁</div>
+                            <div class="upload-text">点击或拖拽上传文档</div>
+                            <div class="upload-hint">支持 PDF / DOCX / TXT / Markdown / CSV（最大 100MB）</div>
+                        </div>
+                        <input type="file" id="file-input" hidden accept=".pdf,.docx,.txt,.md,.csv" multiple>
+                        <div class="kb-stats-row">
+                            <span>📄 <strong id="stat-docs">0</strong> 份文档</span>
+                            <span>🧩 <strong id="stat-chunks">0</strong> 片段</span>
+                            <button class="btn-reindex" id="btn-reindex">🔄 重建索引</button>
+                        </div>
+                    </div>
+                    <div id="doc-list"></div>
+                </div>
+            </div>
+
+            <!-- 会话监控 Tab -->
+            <div class="tab-panel" id="tab-conversations">
+                <div class="conv-list" id="conv-list"></div>
+            </div>
+
+            <!-- 统计 Tab -->
+            <div class="tab-panel" id="tab-stats">
+                <div class="stats-grid" id="stats-grid"></div>
+            </div>
+
+            <!-- 设置 Tab -->
+            <div class="tab-panel" id="tab-settings">
+                <div class="settings-layout">
+                    <!-- 修改密码 -->
+                    <div class="settings-card">
+                        <h3>🔑 修改管理员密码</h3>
+                        <form id="password-form" onsubmit="return false;">
+                            <div class="form-group">
+                                <label>当前密码</label>
+                                <input type="password" id="current-password" placeholder="输入当前密码" required>
+                            </div>
+                            <div class="form-group">
+                                <label>新密码</label>
+                                <input type="password" id="new-password" placeholder="至少6位" minlength="6" required>
+                            </div>
+                            <div class="form-group">
+                                <label>确认新密码</label>
+                                <input type="password" id="confirm-password" placeholder="再次输入新密码" required>
+                            </div>
+                            <button type="submit" class="btn-primary" onclick="doChangePassword()">修改密码</button>
+                        </form>
+                        <p id="password-msg" style="margin-top:0.5rem;font-size:0.8rem;min-height:1.2rem;"></p>
+                    </div>
+
+                    <!-- API 配置 -->
+                    <div class="settings-card">
+                        <h3>🔌 LLM API 配置</h3>
+                        <p style="font-size:0.75rem;color:var(--text3);margin-bottom:1rem;">
+                            配置后立即生效，无需重启。不填则不修改当前值。
+                        </p>
+                        <div class="form-group">
+                            <label>LLM 提供商</label>
+                            <select id="api-provider">
+                                <option value="openai">OpenAI</option>
+                                <option value="groq">Groq（免费额度）</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>OpenAI API Key</label>
+                            <input type="password" id="api-openai-key" placeholder="sk-proj-...（留空不修改）">
+                        </div>
+                        <div class="form-group">
+                            <label>OpenAI Model</label>
+                            <input type="text" id="api-openai-model" placeholder="gpt-4o-mini">
+                        </div>
+                        <div class="form-group">
+                            <label>Groq API Key</label>
+                            <input type="password" id="api-groq-key" placeholder="gsk_...（留空不修改）">
+                        </div>
+                        <div class="form-group">
+                            <label>Groq Model</label>
+                            <input type="text" id="api-groq-model" placeholder="llama-3.3-70b-versatile">
+                        </div>
+                        <button class="btn-primary" onclick="doSaveApiConfig()">保存 API 配置</button>
+                        <p id="api-msg" style="margin-top:0.5rem;font-size:0.8rem;min-height:1.2rem;"></p>
+                    </div>
+                </div>
+            </div>
+            <!-- 用户管理 Tab (super_admin only) -->
+            <div class="tab-panel" id="tab-users">
+                <div class="settings-layout">
+                    <div class="settings-card">
+                        <h3>👥 Create New User</h3>
+                        <div class="form-group">
+                            <label>Email</label>
+                            <input type="email" id="new-user-email" placeholder="staff@company.com">
+                        </div>
+                        <div class="form-group">
+                            <label>Name</label>
+                            <input type="text" id="new-user-name" placeholder="Staff name">
+                        </div>
+                        <div class="form-group">
+                            <label>Password</label>
+                            <input type="password" id="new-user-password" placeholder="Min 6 chars">
+                        </div>
+                        <div class="form-group">
+                            <label>Role</label>
+                            <select id="new-user-role">
+                                <option value="agent">Agent (reply only)</option>
+                                <option value="admin">Admin (full access)</option>
+                            </select>
+                        </div>
+                        <button class="btn-primary" onclick="createUser()">Create User</button>
+                        <p id="create-user-msg" style="margin-top:0.5rem;font-size:0.8rem;"></p>
+                    </div>
+                    <div class="settings-card">
+                        <h3>📋 User List</h3>
+                        <div id="user-list"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WebSocket 状态 -->
+    <div class="ws-indicator" id="ws-indicator" title="WebSocket 连接状态">⚪</div>
+
+    <script src="/admin/js/admin-auth.js"></script>
+    <script src="/admin/js/admin-app.js"></script>
+    <script src="/admin/js/admin-escalations.js"></script>
+    <script src="/admin/js/admin-documents.js"></script>
+    <script src="/admin/js/admin-stats.js"></script>
+    <script src="/admin/js/admin-conversations.js"></script>
+    <script src="/admin/js/admin-settings.js"></script>
+</body>
+</html>
