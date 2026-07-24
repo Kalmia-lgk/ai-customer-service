@@ -1,0 +1,71 @@
+[
+  {
+    "ticket_id": "07e67be8-8d07-4426-a652-6994f8e3ef7c",
+    "session_id": "62b7fa5f-f9f1-42d8-ba88-fc5f2ec75abe",
+    "customer_name": "匿名用户",
+    "status": "resolved",
+    "priority": "medium",
+    "reason": "用户请求转人工客服",
+    "assigned_staff_id": "dc5bb74a-c942-4798-a8db-adcba0966f34",
+    "assigned_staff_name": "kalmia",
+    "created_at": "2026-06-26T22:35:40.816957",
+    "resolved_at": "2026-07-15T22:29:47.207128",
+    "messages": [
+      {
+        "role": "system",
+        "content": "人工客服 kalmia 已接入",
+        "timestamp": "2026-06-26T22:36:31.971305"
+      },
+      {
+        "role": "assistant",
+        "content": "你好",
+        "staff_name": "kalmia",
+        "timestamp": "2026-06-26T22:36:35.054062"
+      },
+      {
+        "role": "system",
+        "content": "工单已解决，感谢您的反馈！",
+        "timestamp": "2026-07-15T22:29:47.207683"
+      }
+    ],
+    "conversation_snapshot": [
+      {
+        "role": "user",
+        "content": "你好"
+      },
+      {
+        "role": "assistant",
+        "content": "您好！👋 欢迎使用 **AI 智能客服系统**，很高兴为您服务！\n\n我是您的专属 AI 客服助手，可以帮您：\n\n- 📚 **知识库问答**：上传企业文档后，我可以基于文档内容精准回答\n- 🔍 **智能检索**：快速从海量资料中找到您需要的信息\n- 💬 **多轮对话**：支持上下文理解，交流更自然流畅\n- 🎧 **人工转接**：复杂问题可一键转接人工客服\n\n请问有什么可以帮您的？您可以直接提问，或先上传知识库文件哦～"
+      }
+    ]
+  },
+  {
+    "ticket_id": "fa688625-0373-4262-b372-a8c9309f9000",
+    "session_id": "aa2f25dc-1cdf-46c0-99e1-262023bbd330",
+    "customer_name": "匿名用户",
+    "status": "in_progress",
+    "priority": "medium",
+    "reason": "用户请求转人工客服",
+    "assigned_staff_id": "fac01755-54e0-4a2e-84d7-772fa920d51c",
+    "assigned_staff_name": "123",
+    "created_at": "2026-07-24T11:19:51.048263",
+    "resolved_at": null,
+    "messages": [
+      {
+        "role": "system",
+        "content": "人工客服 123 已接入",
+        "timestamp": "2026-07-24T11:19:56.357430"
+      }
+    ],
+    "conversation_snapshot": [
+      {
+        "role": "user",
+        "content": "你好"
+      },
+      {
+        "role": "assistant",
+        "content": "你好！很高兴为您服务😊 请问有什么可以帮助您的？"
+      }
+    ]
+  }
+]

@@ -31,10 +31,12 @@ class LLMClient:
             self.provider = settings_service.get_active_provider()
             self.model = settings_service.get_active_model()
             self.api_key = settings_service.get_active_api_key()
+            self.base_url = settings_service.get_active_base_url()
         except Exception:
             self.provider = settings.LLM_PROVIDER
             self.model = settings.get_llm_model()
             self.api_key = settings.get_llm_api_key()
+            self.base_url = settings.get_llm_base_url() or ""
         self._demo_mode = self._detect_demo_mode()
 
     def _detect_demo_mode(self) -> bool:
@@ -72,7 +74,8 @@ class LLMClient:
             return
 
         match self.provider:
-            case "openai":
+            case "openai" | "siliconflow":
+                # 硅基流动为 OpenAI 兼容接口，复用同一实现
                 async for chunk in self._stream_openai(messages, temperature, max_tokens):
                     yield chunk
             case "anthropic":
@@ -203,7 +206,7 @@ class LLMClient:
 
             client = AsyncOpenAI(
                 api_key=self.api_key,
-                base_url=settings.OPENAI_BASE_URL,
+                base_url=self.base_url or settings.OPENAI_BASE_URL,
             )
             stream = await client.chat.completions.create(
                 model=self.model,

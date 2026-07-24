@@ -1,6 +1,7 @@
 # ============================================================
 # 文档检索模块 - 负责语义搜索与上下文组装
-# 所有重型依赖 (chromadb, llama_index) 均为按需加载
+# Embedding 通过 app.rag.embedding 走 OpenAI 兼容接口
+# （支持 OpenAI / 硅基流动等），chromadb 按需加载
 # ============================================================
 from __future__ import annotations
 
@@ -9,15 +10,13 @@ from typing import Optional, Tuple
 from loguru import logger
 
 from app.core.config import settings
+from app.rag.embedding import EmbeddingClient
 
 
 class DocumentRetrieval:
     """
     知识库检索器
     查询 → Embedding → Chroma 向量搜索 → 返回相关文档片段
-
-    注意: chromadb / llama_index 在首次实例化时按需导入，
-    Demo 模式下不会触发导入。
     """
 
     def __init__(self) -> None:
@@ -27,27 +26,24 @@ class DocumentRetrieval:
         # 按需导入 chromadb
         try:
             import chromadb as _chromadb
-            self._chromadb = _chromadb
         except ImportError as e:
             logger.warning(f"⚠️ chromadb 未安装 ({e})，检索功能不可用。Demo 模式不受影响。")
             return
 
-        # 按需导入 embedding
-        try:
-            from llama_index.embeddings.openai import OpenAIEmbedding as _Embedding
-            self._OpenAIEmbedding = _Embedding
-        except ImportError as e:
-            logger.warning(f"⚠️ llama-index 未安装 ({e})，检索功能不可用。Demo 模式不受影响。")
+        # Embedding 客户端（自动选择硅基流动 / OpenAI）
+        self._embedding = EmbeddingClient()
+        if not self._embedding.is_available:
+            logger.warning("⚠️ Embedding 未配置，检索功能不可用。Demo 模式不受影响。")
             return
 
         # 初始化 Chroma
         try:
-            self._chroma_client = self._chromadb.PersistentClient(
+            self._chroma_client = _chromadb.PersistentClient(
                 path=settings.CHROMA_PERSIST_DIR,
             )
         except TypeError:
             from chromadb.config import Settings as _Cs
-            self._chroma_client = self._chromadb.PersistentClient(
+            self._chroma_client = _chromadb.PersistentClient(
                 path=settings.CHROMA_PERSIST_DIR,
                 settings=_Cs(anonymized_telemetry=False),
             )
@@ -55,12 +51,8 @@ class DocumentRetrieval:
         self._collection = self._chroma_client.get_or_create_collection(
             name="customer_service_knowledge",
         )
-        self._embedding = self._OpenAIEmbedding(
-            model=settings.OPENAI_EMBEDDING_MODEL,
-            api_key=settings.OPENAI_API_KEY,
-        )
         self._available = True
-        logger.info(f"✅ 检索器就绪, top_k={self._top_k}")
+        logger.info(f"✅ 检索器就绪, top_k={self._top_k}, embedding={self._embedding.model}")
 
     @property
     def is_available(self) -> bool:
@@ -72,15 +64,15 @@ class DocumentRetrieval:
         top_k: Optional[int] = None,
         score_threshold: float = 0.3,
     ) -> list[dict]:
-        """
-        向量检索，返回相关文档片段列表
-        """
+        """向量检索，返回相关文档片段列表"""
         if not self._available:
             return []
 
         k = top_k or self._top_k
         try:
             query_embedding = self._embedding.get_query_embedding(query)
+            if query_embedding is None:
+                return []
             results = self._collection.query(
                 query_embeddings=[query_embedding],
                 n_results=k,

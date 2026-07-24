@@ -41,6 +41,12 @@ Thumbs.db
 # --- 日志 ---
 *.log
 logs/
+start_log.txt
+
+# --- PyInstaller 打包产物 ---
+*.exe
+build_launcher/
+*.spec
 
 # --- Docker ---
 .dockerignore

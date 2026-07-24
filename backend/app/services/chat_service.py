@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # 聊天服务 - 处理多轮对话、LLM 调用、流式输出与知识库集成
 # ============================================================
 from __future__ import annotations
@@ -13,22 +13,23 @@ from loguru import logger
 from app.core.llm_client import LLMClient
 from app.schemas.models import SourceCitation
 
-# RAG 检索器（按需初始化，Demo 模式下为 None）
+# RAG 检索器 - 每次调用都重新尝试（不永久标记失败）
 _retrieval = None
 
 
 def _get_retrieval():
-    """按需获取检索器实例，避免 Demo 模式触发重型依赖导入"""
+    """按需获取检索器实例；不可用时下次调用会重新尝试（配置 Key 后无需重启）"""
     global _retrieval
-    if _retrieval is None:
+    if _retrieval is None or not _retrieval.is_available:
         try:
             from app.rag.retrieval import DocumentRetrieval
             _retrieval = DocumentRetrieval()
-            logger.info("知识库检索器已加载")
+            if _retrieval.is_available:
+                logger.info("知识库检索器已加载")
         except Exception as e:
             logger.warning(f"知识库检索器不可用: {e}")
-            _retrieval = False  # 标记为已尝试但失败
-    return _retrieval if _retrieval is not False else None
+            return None
+    return _retrieval if (_retrieval and _retrieval.is_available) else None
 
 
 # 客服 System Prompt（关键：定义 AI 客服的行为准则）

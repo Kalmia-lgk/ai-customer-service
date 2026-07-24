@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
@@ -175,23 +175,42 @@
                             <select id="api-provider">
                                 <option value="openai">OpenAI</option>
                                 <option value="groq">Groq（免费额度）</option>
+                                <option value="siliconflow">硅基流动 (SiliconFlow)</option>
                             </select>
                         </div>
-                        <div class="form-group">
-                            <label>OpenAI API Key</label>
-                            <input type="password" id="api-openai-key" placeholder="sk-proj-...（留空不修改）">
+                        <div id="sec-openai">
+                            <div class="form-group">
+                                <label>OpenAI API Key</label>
+                                <input type="password" id="api-openai-key" placeholder="sk-proj-...（留空不修改）">
+                            </div>
+                            <div class="form-group">
+                                <label>OpenAI Model</label>
+                                <input type="text" id="api-openai-model" placeholder="gpt-4o-mini">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label>OpenAI Model</label>
-                            <input type="text" id="api-openai-model" placeholder="gpt-4o-mini">
+                        <div id="sec-groq">
+                            <div class="form-group">
+                                <label>Groq API Key</label>
+                                <input type="password" id="api-groq-key" placeholder="gsk_...（留空不修改）">
+                            </div>
+                            <div class="form-group">
+                                <label>Groq Model</label>
+                                <input type="text" id="api-groq-model" placeholder="llama-3.3-70b-versatile">
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label>Groq API Key</label>
-                            <input type="password" id="api-groq-key" placeholder="gsk_...（留空不修改）">
-                        </div>
-                        <div class="form-group">
-                            <label>Groq Model</label>
-                            <input type="text" id="api-groq-model" placeholder="llama-3.3-70b-versatile">
+                        <div id="sec-siliconflow">
+                            <div class="form-group">
+                                <label>硅基流动 API Key</label>
+                                <input type="password" id="api-siliconflow-key" placeholder="sk-...（留空不修改）">
+                            </div>
+                            <div class="form-group">
+                                <label>硅基流动 Model</label>
+                                <input type="text" id="api-siliconflow-model" placeholder="Qwen/Qwen2.5-7B-Instruct">
+                            </div>
+                            <div class="form-group">
+                                <label>硅基流动 Base URL</label>
+                                <input type="text" id="api-siliconflow-url" placeholder="https://api.siliconflow.cn/v1">
+                            </div>
                         </div>
                         <button class="btn-primary" onclick="doSaveApiConfig()">保存 API 配置</button>
                         <p id="api-msg" style="margin-top:0.5rem;font-size:0.8rem;min-height:1.2rem;"></p>
@@ -244,5 +263,19 @@
     <script src="/admin/js/admin-stats.js"></script>
     <script src="/admin/js/admin-conversations.js"></script>
     <script src="/admin/js/admin-settings.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  var p = document.getElementById("api-provider");
+  if (p) {
+    p.addEventListener("change", function() {
+      document.getElementById("sec-openai").style.display = this.value === "openai" ? "block" : "none";
+      document.getElementById("sec-groq").style.display = this.value === "groq" ? "block" : "none";
+      document.getElementById("sec-siliconflow").style.display = this.value === "siliconflow" ? "block" : "none";
+    });
+    p.dispatchEvent(new Event("change"));
+  }
+});
+</script>
 </body>
 </html>
+

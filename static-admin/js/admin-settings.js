@@ -12,9 +12,12 @@ async function loadSettings() {
     document.getElementById('api-openai-model').placeholder = d.openai_model || 'gpt-4o-mini';
     document.getElementById('api-groq-key').placeholder = d.groq_api_key || 'gsk_...';
     document.getElementById('api-groq-model').placeholder = d.groq_model || 'llama-3.3-70b-versatile';
+    document.getElementById('api-siliconflow-key').placeholder = d.siliconflow_api_key || 'sk-...';
+    document.getElementById('api-siliconflow-model').placeholder = d.siliconflow_model || 'Qwen/Qwen2.5-7B-Instruct';
+    document.getElementById('api-siliconflow-url').placeholder = d.siliconflow_base_url || 'https://api.siliconflow.cn/v1';
     document.getElementById('api-msg').textContent = d.demo_mode
       ? '当前: Demo 模式（无有效 API Key）'
-      : '当前: ' + d.llm_provider.toUpperCase() + ' / ' + d.openai_model;
+      : '当前: ' + d.llm_provider.toUpperCase() + ' / ' + (d.active_model || '');
     document.getElementById('api-msg').style.color = d.demo_mode ? '#f59e0b' : '#10b981';
   } catch (e) {
     console.error('Load settings failed:', e);
@@ -63,6 +66,9 @@ async function doSaveApiConfig() {
     openai_model: document.getElementById('api-openai-model').value,
     groq_api_key: document.getElementById('api-groq-key').value,
     groq_model: document.getElementById('api-groq-model').value,
+    siliconflow_api_key: document.getElementById('api-siliconflow-key').value,
+    siliconflow_model: document.getElementById('api-siliconflow-model').value,
+    siliconflow_base_url: document.getElementById('api-siliconflow-url').value,
   };
 
   try {
@@ -80,6 +86,7 @@ async function doSaveApiConfig() {
       // Clear input fields
       document.getElementById('api-openai-key').value = '';
       document.getElementById('api-groq-key').value = '';
+      document.getElementById('api-siliconflow-key').value = '';
     }
   } catch (e) {
     msg.textContent = '保存失败: ' + e.message;

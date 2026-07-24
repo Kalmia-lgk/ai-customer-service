@@ -16,6 +16,14 @@ from app.core.config import settings as env_settings
 DATA_DIR = Path(env_settings.UPLOAD_DIR).parent / "data"
 SETTINGS_FILE = DATA_DIR / "settings.json"
 
+# 每个提供商在 settings.json 中可覆盖的字段
+_PROVIDER_FIELDS = [
+    "llm_provider",
+    "openai_api_key", "openai_model",
+    "groq_api_key", "groq_model",
+    "siliconflow_api_key", "siliconflow_model", "siliconflow_base_url",
+]
+
 
 class SettingsService:
     """
@@ -36,13 +44,9 @@ class SettingsService:
         except Exception as e:
             logger.warning(f"加载 settings.json 失败: {e}")
             self._data = {}
-        # 确保必要字段存在
         self._data.setdefault("password_hash", "")
-        self._data.setdefault("llm_provider", "")
-        self._data.setdefault("openai_api_key", "")
-        self._data.setdefault("openai_model", "")
-        self._data.setdefault("groq_api_key", "")
-        self._data.setdefault("groq_model", "")
+        for field in _PROVIDER_FIELDS:
+            self._data.setdefault(field, "")
 
     def _save(self) -> None:
         with self._lock:
@@ -66,49 +70,65 @@ class SettingsService:
     # ==================== API 配置 ====================
 
     def get_api_config(self) -> dict:
-        """获取当前生效的 API 配置"""
+        """获取当前生效的 API 配置（Key 已脱敏，用于前端展示）"""
         return {
-            "llm_provider": self._data.get("llm_provider") or env_settings.LLM_PROVIDER,
+            "llm_provider": self.get_active_provider(),
             "openai_api_key": self._mask_key(self._data.get("openai_api_key") or env_settings.OPENAI_API_KEY),
             "openai_model": self._data.get("openai_model") or env_settings.OPENAI_MODEL,
             "groq_api_key": self._mask_key(self._data.get("groq_api_key") or env_settings.GROQ_API_KEY),
             "groq_model": self._data.get("groq_model") or env_settings.GROQ_MODEL,
+            "siliconflow_api_key": self._mask_key(self._data.get("siliconflow_api_key") or env_settings.SILICONFLOW_API_KEY),
+            "siliconflow_model": self._data.get("siliconflow_model") or env_settings.SILICONFLOW_MODEL,
+            "siliconflow_base_url": self._data.get("siliconflow_base_url") or env_settings.SILICONFLOW_BASE_URL,
+            "active_model": self.get_active_model(),
             "demo_mode": self._is_demo_mode(),
         }
 
-    def get_active_api_key(self) -> str:
-        """获取当前实际使用的 API Key（不脱敏）"""
-        provider = self._data.get("llm_provider") or env_settings.LLM_PROVIDER
-        if provider == "openai":
-            return self._data.get("openai_api_key") or env_settings.OPENAI_API_KEY
-        elif provider == "groq":
-            return self._data.get("groq_api_key") or env_settings.GROQ_API_KEY
-        return ""
-
     def get_active_provider(self) -> str:
         return self._data.get("llm_provider") or env_settings.LLM_PROVIDER
+
+    def get_active_api_key(self) -> str:
+        """获取当前实际使用的 API Key（不脱敏）"""
+        provider = self.get_active_provider()
+        if provider == "openai":
+            return self._data.get("openai_api_key") or env_settings.OPENAI_API_KEY
+        if provider == "groq":
+            return self._data.get("groq_api_key") or env_settings.GROQ_API_KEY
+        if provider == "siliconflow":
+            return self._data.get("siliconflow_api_key") or env_settings.SILICONFLOW_API_KEY
+        if provider == "anthropic":
+            return env_settings.ANTHROPIC_API_KEY
+        return ""
 
     def get_active_model(self) -> str:
         provider = self.get_active_provider()
         if provider == "openai":
             return self._data.get("openai_model") or env_settings.OPENAI_MODEL
-        elif provider == "groq":
+        if provider == "groq":
             return self._data.get("groq_model") or env_settings.GROQ_MODEL
+        if provider == "siliconflow":
+            return self._data.get("siliconflow_model") or env_settings.SILICONFLOW_MODEL
         return env_settings.get_llm_model()
 
+    def get_active_base_url(self) -> str:
+        """获取当前提供商的 base_url（OpenAI 兼容接口用）"""
+        provider = self.get_active_provider()
+        if provider == "siliconflow":
+            return self._data.get("siliconflow_base_url") or env_settings.SILICONFLOW_BASE_URL
+        if provider == "openai":
+            return env_settings.OPENAI_BASE_URL
+        return ""
+
     def set_api_config(self, config: dict) -> None:
-        """更新 API 配置"""
+        """更新 API 配置（只更新非空字段）"""
         with self._lock:
-            if "llm_provider" in config:
+            if "llm_provider" in config and config["llm_provider"]:
                 self._data["llm_provider"] = config["llm_provider"]
-            if "openai_api_key" in config and config["openai_api_key"]:
-                self._data["openai_api_key"] = config["openai_api_key"]
-            if "openai_model" in config and config["openai_model"]:
-                self._data["openai_model"] = config["openai_model"]
-            if "groq_api_key" in config and config["groq_api_key"]:
-                self._data["groq_api_key"] = config["groq_api_key"]
-            if "groq_model" in config and config["groq_model"]:
-                self._data["groq_model"] = config["groq_model"]
+            for field in _PROVIDER_FIELDS:
+                if field == "llm_provider":
+                    continue
+                if config.get(field):
+                    self._data[field] = config[field]
             self._save()
         logger.info(f"API 配置已更新: provider={self.get_active_provider()}")
 
@@ -117,7 +137,7 @@ class SettingsService:
         api_key = self.get_active_api_key()
         if not api_key or len(api_key) < 10:
             return True
-        if "sk-your-" in api_key or "gsk_your-" in api_key:
+        if "sk-your-" in api_key or "gsk_your-" in api_key or "sk-ant-your-" in api_key:
             return True
         return os.getenv("DEMO_MODE", "").lower() == "true"
 

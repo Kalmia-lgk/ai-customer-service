@@ -1,6 +1,7 @@
 # ============================================================
 # 文档摄取模块 - 负责文档加载、分块、Embedding 与入库
-# 所有重型依赖 (chromadb, llama_index) 均为按需加载
+# Embedding 通过 app.rag.embedding 走 OpenAI 兼容接口
+# （支持 OpenAI / 硅基流动等），chromadb / llama_index 按需加载
 # ============================================================
 from __future__ import annotations
 
@@ -14,15 +15,13 @@ from typing import Optional
 from loguru import logger
 
 from app.core.config import settings
+from app.rag.embedding import EmbeddingClient
 
 
 class DocumentIngestion:
     """
     文档摄取管道
     流程: 读取文件 → 解析为 Document → 分块 → Embedding → 存入 Chroma
-
-    注意: chromadb / llama_index 在首次实例化时按需导入，
-    Demo 模式下不会触发导入，无需安装这些重型依赖。
     """
 
     def __init__(self) -> None:
@@ -33,35 +32,40 @@ class DocumentIngestion:
         # 按需导入 chromadb
         try:
             import chromadb as _chromadb
-            self._chromadb = _chromadb
         except ImportError as e:
             self._init_error = f"chromadb 未安装: {e}"
             logger.warning(f"⚠️ {self._init_error}，知识库功能不可用。Demo 模式不受影响。")
             self._init_meta_only()
             return
 
-        # 按需导入 LlamaIndex
+        # 按需导入 LlamaIndex（仅用于文档解析和分块）
         try:
             from llama_index.core import SimpleDirectoryReader as _Reader
             from llama_index.core.node_parser import SentenceSplitter as _Splitter
-            from llama_index.embeddings.openai import OpenAIEmbedding as _Embedding
             self._SimpleDirectoryReader = _Reader
             self._SentenceSplitter = _Splitter
-            self._OpenAIEmbedding = _Embedding
         except ImportError as e:
             self._init_error = f"llama-index 未安装: {e}"
             logger.warning(f"⚠️ {self._init_error}，知识库功能不可用。Demo 模式不受影响。")
             self._init_meta_only()
             return
 
+        # Embedding 客户端（自动选择硅基流动 / OpenAI）
+        self._embedding = EmbeddingClient()
+        if not self._embedding.is_available:
+            self._init_error = "未配置可用的 Embedding API Key（硅基流动或 OpenAI）"
+            logger.warning(f"⚠️ {self._init_error}，知识库功能不可用。")
+            self._init_meta_only()
+            return
+
         # 初始化 Chroma 客户端
         try:
-            self._chroma_client = self._chromadb.PersistentClient(
+            self._chroma_client = _chromadb.PersistentClient(
                 path=settings.CHROMA_PERSIST_DIR,
             )
         except TypeError:
             from chromadb.config import Settings as _Cs
-            self._chroma_client = self._chromadb.PersistentClient(
+            self._chroma_client = _chromadb.PersistentClient(
                 path=settings.CHROMA_PERSIST_DIR,
                 settings=_Cs(anonymized_telemetry=False),
             )
@@ -71,11 +75,6 @@ class DocumentIngestion:
             metadata={"description": "AI 客服知识库"},
         )
 
-        # 嵌入模型 + 分块器
-        self._embedding = self._OpenAIEmbedding(
-            model=settings.OPENAI_EMBEDDING_MODEL,
-            api_key=settings.OPENAI_API_KEY,
-        )
         self._splitter = self._SentenceSplitter(
             chunk_size=settings.CHUNK_SIZE,
             chunk_overlap=settings.CHUNK_OVERLAP,
@@ -84,7 +83,10 @@ class DocumentIngestion:
         self._meta_path = Path(settings.UPLOAD_DIR) / "_documents_meta.json"
         self._ensure_meta_file()
         self._available = True
-        logger.info(f"✅ Chroma 知识库就绪, collection: {self._collection.name}")
+        logger.info(
+            f"✅ Chroma 知识库就绪, collection: {self._collection.name}, "
+            f"embedding: {self._embedding.model}"
+        )
 
     def _init_meta_only(self) -> None:
         """仅初始化元数据（降级模式，无向量检索能力）"""
@@ -118,18 +120,24 @@ class DocumentIngestion:
             nodes = self._splitter.get_nodes_from_documents(documents)
             logger.info(f"文档分块完成: {filename}, 共 {len(nodes)} 块")
 
-            for i, node in enumerate(nodes):
-                text = node.get_content()
-                embedding = self._embedding.get_text_embedding(text)
-                chunk_id = f"{doc_id}_chunk_{i}"
+            # 批量 Embedding（每批 32 条，减少 API 调用次数）
+            texts = [node.get_content() for node in nodes]
+            batch_size = 32
+            for start in range(0, len(texts), batch_size):
+                batch = texts[start:start + batch_size]
+                embeddings = self._embedding.embed_batch(batch)
+                if embeddings is None:
+                    raise RuntimeError("Embedding 服务不可用")
+                ids = [f"{doc_id}_chunk_{start + j}" for j in range(len(batch))]
+                metadatas = [{
+                    "doc_id": doc_id, "filename": filename,
+                    "chunk_index": start + j, "total_chunks": len(texts),
+                } for j in range(len(batch))]
                 self._collection.add(
-                    ids=[chunk_id],
-                    embeddings=[embedding],
-                    documents=[text],
-                    metadatas=[{
-                        "doc_id": doc_id, "filename": filename,
-                        "chunk_index": i, "total_chunks": len(nodes),
-                    }],
+                    ids=ids,
+                    embeddings=embeddings,
+                    documents=batch,
+                    metadatas=metadatas,
                 )
 
             file_size = os.path.getsize(file_path)

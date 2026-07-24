@@ -277,4 +277,10 @@ async def update_api_config(req: dict, admin: dict = Depends(require_role("super
     from app.core.llm_client import llm_client
     settings_service.set_api_config(req)
     llm_client.reload_config()
-    return {"success": True, "demo_mode": llm_client._demo_mode, "provider": llm_client.provider}
+    return {
+        "success": True,
+        "message": "配置已保存",
+        "demo_mode": llm_client._demo_mode,
+        "provider": llm_client.provider,
+        "model": llm_client.model,
+    }
