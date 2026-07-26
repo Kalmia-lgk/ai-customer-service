@@ -24,6 +24,15 @@ env/
 uploads/*
 !uploads/.gitkeep
 
+# --- 运行时数据库（SQLite）---
+data/app.db
+data/app.db-shm
+data/app.db-wal
+
+# --- 测试产物 ---
+scripts/shots/
+scripts/_tmp*.py
+
 # --- ChromaDB 数据 ---
 chroma_db/
 
