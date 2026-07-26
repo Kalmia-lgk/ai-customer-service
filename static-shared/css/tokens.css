@@ -1,0 +1,57 @@
+/* ============================================================
+   设计令牌（Design Token）：两端共享的唯一视觉变量来源
+   风格：冷静灰白 + 靛蓝点缀（对标 Linear/Vercel 式安静工具感）
+   ============================================================ */
+:root {
+  /* 浅色主题 */
+  --bg: #FAFAF9;
+  --surface: #FFFFFF;
+  --surface-2: #F4F4F2;
+  --surface-3: #ECECEA;
+  --border: #E7E6E3;
+  --border-strong: #D6D5D1;
+  --text: #1A1A1A;
+  --text-2: #6E6D67;
+  --text-3: #A3A29B;
+  --accent: #4F46E5;
+  --accent-hover: #4338CA;
+  --accent-soft: #EEEDFC;
+  --accent-contrast: #FFFFFF;
+  --success: #16803C;
+  --success-soft: #E9F6EE;
+  --warning: #B45309;
+  --warning-soft: #FDF3E7;
+  --danger: #DC2626;
+  --danger-soft: #FDEBEB;
+
+  --radius: 10px;
+  --radius-lg: 14px;
+  --radius-full: 999px;
+  --shadow-pop: 0 8px 30px rgba(20, 20, 20, .12);
+
+  --font: "Segoe UI Variable", "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-mono: "Cascadia Code", Consolas, "Courier New", monospace;
+}
+
+[data-theme="dark"] {
+  --bg: #17181C;
+  --surface: #1F2025;
+  --surface-2: #26272D;
+  --surface-3: #2E2F36;
+  --border: #33343B;
+  --border-strong: #43444C;
+  --text: #E9E9E7;
+  --text-2: #9B9CA3;
+  --text-3: #6C6D75;
+  --accent: #818CF8;
+  --accent-hover: #A5B0FA;
+  --accent-soft: #262A45;
+  --accent-contrast: #14142B;
+  --success: #4ADE80;
+  --success-soft: #1B2E22;
+  --warning: #FBBF24;
+  --warning-soft: #322817;
+  --danger: #F87171;
+  --danger-soft: #371F1F;
+  --shadow-pop: 0 8px 30px rgba(0, 0, 0, .45);
+}
