@@ -1,108 +1,102 @@
-# ============================================================
-# 聊天路由 - 处理对话相关 API
-# POST /api/chat         流式聊天
-# GET  /api/sessions     会话列表
-# GET  /api/sessions/{id}会话详情
-# DELETE /api/sessions/{id} 删除会话
-# ============================================================
+"""聊天路由：唯一的 /api/chat（SSE），Agent 图就是处理链路本身。"""
 from __future__ import annotations
 
 import json
-from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Query
 from loguru import logger
+from sqlmodel import Session
+from starlette.responses import StreamingResponse
 
-from app.schemas.models import (
-    ChatRequest,
-    SessionListResponse,
-    SessionMeta,
-    ErrorResponse,
-)
-from app.services.chat_service import ChatService
+from app.agent.graph import graph
+from app.db import engine
+from app.llm import get_gateway
+from app.schemas import ChatRequest
+from app.services import session_service
 
 router = APIRouter(prefix="/api", tags=["聊天"])
 
-# 全局服务实例
-chat_service = ChatService()
+NOT_CONFIGURED_HINT = (
+    "系统尚未配置 AI 服务：请管理员登录管理端，在「设置」页填写 LLM API Key 后即可开始对话。"
+)
 
 
-@router.post("/chat", summary="流式聊天")
-async def chat_endpoint(request: ChatRequest):
-    """
-    核心聊天接口，使用 Server-Sent Events (SSE) 实现流式输出
+def sse(data: dict, event: str | None = None) -> str:
+    prefix = f"event: {event}\n" if event else ""
+    return f"{prefix}data: {json.dumps(data, ensure_ascii=False)}\n\n"
 
-    事件类型:
-    - session:   返回/创建 session_id
-    - thinking:  处理状态提示
-    - sources:   知识库引用来源
-    - token:     逐字内容
-    - done:      完成标记
-    - error:     错误信息
-    """
-    logger.info(f"收到聊天请求: session={request.session_id}, msg='{request.message[:50]}...'")
 
-    async def event_generator():
-        """SSE 事件流生成器"""
-        try:
-            async for chunk in chat_service.chat_stream(
-                message=request.message,
-                session_id=request.session_id,
-            ):
-                event_type = chunk.get("type", "message")
-                # 移除 type 字段后发送
-                payload = {k: v for k, v in chunk.items() if k != "type"}
+@router.post("/chat")
+async def chat(req: ChatRequest) -> StreamingResponse:
+    async def gen():
+        with Session(engine) as db:
+            session = session_service.get_or_create_session(db, req.visitor_id, req.session_id)
+            history = session_service.recent_history(db, session)
+            session_service.append_message(db, session, "user", req.message)
+            yield sse({"session_id": session.id}, "session")
 
-                if event_type == "thinking":
-                    yield f"event: thinking\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                elif event_type == "sources":
-                    yield f"event: sources\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                elif event_type == "session":
-                    yield f"event: session\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                elif event_type == "token":
-                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                elif event_type == "done":
-                    yield f"event: done\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
-                elif event_type == "error":
-                    yield f"event: error\ndata: {json.dumps(payload, ensure_ascii=False)}\n\n"
+            if not get_gateway().is_configured:
+                yield sse({"content": NOT_CONFIGURED_HINT})
+                session_service.append_message(db, session, "assistant", NOT_CONFIGURED_HINT)
+                yield sse({}, "done")
+                return
 
-        except Exception as e:
-            logger.error(f"SSE 事件流异常: {e}")
-            yield f"event: error\ndata: {json.dumps({'content': str(e)}, ensure_ascii=False)}\n\n"
+            state = {
+                "user_message": req.message,
+                "history": history,
+                "session_id": session.id,
+                "visitor_id": req.visitor_id,
+            }
+            answer_parts: list[str] = []
+            sources: list[dict] = []
+            try:
+                async for payload in graph.astream(state, stream_mode="custom"):
+                    event = payload.get("event")
+                    if event == "token":
+                        answer_parts.append(payload["content"])
+                        yield sse({"content": payload["content"]})
+                    elif event == "sources":
+                        sources = payload["sources"]
+                        yield sse({"sources": sources}, "sources")
+                    elif event == "agent_step":
+                        yield sse(payload, "agent_step")
+                    elif event == "ticket":
+                        yield sse(payload, "ticket")
+            except Exception as e:
+                logger.exception("聊天处理失败")
+                yield sse({"message": f"处理失败：{e}"}, "error")
+
+            if answer_parts:
+                session_service.append_message(
+                    db, session, "assistant", "".join(answer_parts), sources or None
+                )
+            yield sse({}, "done")
 
     return StreamingResponse(
-        event_generator(),
+        gen(),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",  # 禁用 Nginx 缓冲
-            "Access-Control-Allow-Origin": "*",
-        },
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
 
 
-@router.get("/sessions", summary="获取会话列表")
-async def list_sessions():
-    """获取所有会话列表，按更新时间倒序"""
-    sessions = chat_service.get_session_list()
-    return {"sessions": sessions}
+# ---------- 会话管理（visitor_id 强制匹配，实现访客隔离）----------
+
+@router.get("/sessions")
+async def get_sessions(visitor_id: str = Query(min_length=8)):
+    with Session(engine) as db:
+        return session_service.list_sessions(db, visitor_id)
 
 
-@router.get("/sessions/{session_id}", summary="获取会话详情")
-async def get_session(session_id: str):
-    """获取指定会话的完整信息（含历史消息）"""
-    info = chat_service.get_session_info(session_id)
-    if not info:
-        raise HTTPException(status_code=404, detail="会话不存在")
-    return info
+@router.get("/sessions/{session_id}/messages")
+async def get_session_messages(session_id: str, visitor_id: str = Query(min_length=8)):
+    with Session(engine) as db:
+        session = session_service.require_session(db, session_id, visitor_id)
+        return session_service.list_messages(db, session)
 
 
-@router.delete("/sessions/{session_id}", summary="删除会话")
-async def delete_session(session_id: str):
-    """删除指定会话及其历史记录"""
-    ok = chat_service.delete_session(session_id)
-    if not ok:
-        raise HTTPException(status_code=404, detail="会话不存在")
-    return {"success": True, "message": "会话已删除"}
+@router.delete("/sessions/{session_id}")
+async def remove_session(session_id: str, visitor_id: str = Query(min_length=8)):
+    with Session(engine) as db:
+        session = session_service.require_session(db, session_id, visitor_id)
+        session_service.delete_session(db, session)
+    return {"ok": True}

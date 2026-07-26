@@ -1,105 +1,87 @@
-# ============================================================
-# 文档管理路由 - 处理知识库相关 API
-# POST   /api/documents/upload   上传文件
-# GET    /api/documents           文档列表
-# GET    /api/documents/{id}      文档详情
-# DELETE /api/documents/{id}      删除文档
-# POST   /api/documents/reindex   重建索引
-# GET    /api/documents/stats     知识库统计
-# ============================================================
+"""知识库文档路由（需登录）：上传 / 列表 / 删除 / 重建索引。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+import uuid
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from loguru import logger
+from sqlmodel import Session, select
 
-from app.schemas.models import (
-    DocumentListResponse,
-    DocumentInfo,
-    UploadResponse,
-    ReindexResponse,
-    ErrorResponse,
-)
-from app.services.document_service import DocumentService
+from app.config import UPLOAD_DIR, settings
+from app.db import get_db
+from app.models import KnowledgeDoc, User
+from app.rag import pipeline
+from app.rag.loader import SUPPORTED_EXTS
+from app.rag.store import get_store
+from app.security import get_current_user
 
-router = APIRouter(prefix="/api/documents", tags=["文档管理"])
-
-# 全局服务实例
-doc_service = DocumentService()
+router = APIRouter(prefix="/api/documents", tags=["知识库"])
 
 
-@router.post("/upload", summary="上传文档")
-async def upload_document(file: UploadFile = File(...)):
-    """
-    上传知识库文档
-
-    支持格式: PDF, DOCX, TXT, Markdown, CSV
-    大小限制: 由 MAX_UPLOAD_SIZE_MB 环境变量控制（默认 20MB）
-
-    上传后自动进行向量化索引
-    """
-    try:
-        result = await doc_service.upload_file(file)
-        logger.info(f"文件上传成功: {file.filename}")
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        logger.error(f"文件上传失败: {e}")
-        raise HTTPException(status_code=500, detail=f"上传处理失败: {str(e)}")
+@router.get("")
+async def list_documents(
+    _: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    stmt = select(KnowledgeDoc).order_by(KnowledgeDoc.created_at.desc())
+    return db.exec(stmt).all()
 
 
-@router.get("", summary="获取文档列表")
-async def list_documents():
-    """获取所有已上传的文档列表"""
-    docs = doc_service.list_documents()
-    return {"documents": docs}
+@router.post("/upload")
+async def upload_document(
+    file: UploadFile,
+    _: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    filename = file.filename or "unnamed"
+    suffix = Path(filename).suffix.lower()
+    if suffix not in SUPPORTED_EXTS:
+        raise HTTPException(400, f"不支持的文件类型 {suffix}")
+
+    content = await file.read()
+    max_bytes = settings.MAX_UPLOAD_SIZE_MB * 1024 * 1024
+    if len(content) > max_bytes:
+        raise HTTPException(400, f"文件超过 {settings.MAX_UPLOAD_SIZE_MB}MB 限制")
+
+    doc = KnowledgeDoc(
+        filename=filename,
+        stored_name=f"{uuid.uuid4().hex[:8]}_{filename}",
+        size_bytes=len(content),
+        status="processing",
+    )
+    (UPLOAD_DIR / doc.stored_name).write_bytes(content)
+    db.add(doc)
+    db.commit()
+    db.refresh(doc)
+
+    return await pipeline.ingest_document(db, doc)
 
 
-@router.get("/{doc_id}", summary="获取文档详情")
-async def get_document(doc_id: str):
-    """获取指定文档的详细信息"""
-    from app.rag.ingestion import DocumentIngestion
-    ingestion = DocumentIngestion()
-    doc = ingestion.get_document(doc_id)
-    if not doc:
-        raise HTTPException(status_code=404, detail="文档不存在")
-    return doc
+@router.delete("/{doc_id}")
+async def delete_document(
+    doc_id: str, _: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    doc = db.get(KnowledgeDoc, doc_id)
+    if doc is None:
+        raise HTTPException(404, "文档不存在")
+    pipeline.delete_document(db, doc)
+    return {"ok": True}
 
 
-@router.delete("/{doc_id}", summary="删除文档")
-async def delete_document(doc_id: str):
-    """
-    删除指定文档
-    会同时删除: 原始文件、向量数据、元数据
-    """
-    ok = doc_service.delete_document(doc_id)
-    if not ok:
-        raise HTTPException(status_code=404, detail="文档不存在或删除失败")
-    return {"success": True, "message": "文档已删除"}
-
-
-@router.post("/reindex", summary="重建索引")
-async def reindex_documents():
-    """
-    一键重建向量索引
-    会清空当前 ChromaDB 中的所有向量数据，然后重新读取 uploads 目录下的所有文件并索引
-    注意: 操作不可逆，索引期间可能暂时无法检索
-    """
-    try:
-        result = doc_service.reindex()
-        return {
-            "success": True,
-            "message": "索引重建完成",
-            "doc_count": result.get("doc_count", 0),
-            "total_chunks": result.get("total_chunks", 0),
-        }
-    except Exception as e:
-        logger.error(f"重建索引失败: {e}")
-        raise HTTPException(status_code=500, detail=f"重建索引失败: {str(e)}")
-
-
-@router.get("/stats/summary", summary="知识库统计")
-async def get_knowledge_stats():
-    """获取知识库的统计摘要"""
-    stats = doc_service.get_stats()
-    return stats
+@router.post("/reindex")
+async def reindex(
+    _: User = Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """清空向量库，对所有文档重新解析入库。"""
+    get_store().reset()
+    docs = db.exec(select(KnowledgeDoc)).all()
+    ok = failed = 0
+    for doc in docs:
+        doc.status = "processing"
+        result = await pipeline.ingest_document(db, doc)
+        if result.status == "ready":
+            ok += 1
+        else:
+            failed += 1
+    logger.info(f"重建索引完成: 成功 {ok}, 失败 {failed}")
+    return {"ok": ok, "failed": failed, "total_chunks": get_store().chunk_count()}
