@@ -93,6 +93,13 @@ async def delete_user(
     user = db.get(User, user_id)
     if user is None:
         raise HTTPException(404, "用户不存在")
+    # 先解除工单认领关系，否则 tickets.assignee_id 外键会阻止删除
+    for ticket in db.exec(select(Ticket).where(Ticket.assignee_id == user_id)).all():
+        ticket.assignee_id = None
+        if ticket.status == "in_progress":
+            ticket.status = "waiting"
+        db.add(ticket)
+    db.flush()
     db.delete(user)
     db.commit()
     return {"ok": True}

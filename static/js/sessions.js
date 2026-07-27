@@ -44,8 +44,13 @@ export async function refresh() {
     el.addEventListener("click", () => onSelect(s));
     el.querySelector(".del").addEventListener("click", async (e) => {
       e.stopPropagation();
-      await api.deleteSession(s.id);
-      if (s.id === currentId) onSelect(null);
+      try {
+        await api.deleteSession(s.id);
+        if (s.id === currentId) onSelect(null);
+      } catch (err) {
+        console.error("删除会话失败:", err);
+        alert(`删除会话失败：${err.message}`);
+      }
       refresh();
     });
     listEl.appendChild(el);

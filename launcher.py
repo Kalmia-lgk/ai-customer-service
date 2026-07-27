@@ -206,7 +206,7 @@ class LauncherApp:
         mode = "应用窗口模式" if self.browser else "普通浏览器模式"
         info = tk.Label(
             self.root,
-            text=f"打开方式: {mode}    管理端首次使用请点击注册（首个账号即超级管理员）    最小化不影响服务运行",
+            text=f"打开方式: {mode}    管理端用邮箱账号登录    最小化不影响服务运行",
             font=("Microsoft YaHei UI", 9), fg="#64748b", anchor="w",
         )
         info.pack(fill="x", padx=16)

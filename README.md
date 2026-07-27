@@ -72,9 +72,10 @@ AI客服/
 ├─ static-admin/         # 管理端 UI（hash 路由单页）
 ├─ static-shared/        # 共享设计令牌 + 本地化第三方库（挂载 /assets）
 ├─ scripts/
-│  ├─ migrate_json.py    # 旧版 users.json → SQLite 迁移
 │  ├─ reset_data.py      # 清空业务数据（保留账号）
+│  ├─ reset_password.py  # 重置管理端账号密码
 │  ├─ smoke_test.py      # 后端端到端冒烟测试
+│  ├─ full_check.py      # 交付前全功能浏览器验收
 │  └─ ui_check.py / admin_ui_check.py   # Playwright UI 自动化走查
 ├─ data/app.db           # 运行时数据库（gitignore）
 ├─ chroma_db/  uploads/  # 向量库 / 知识库原文件

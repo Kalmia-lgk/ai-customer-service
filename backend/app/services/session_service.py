@@ -91,7 +91,9 @@ def append_message(
 
 
 def delete_session(db: Session, session: ChatSession) -> None:
+    # 必须先删消息并 flush 落库，再删会话，否则 messages.session_id 外键会拦截
     for m in db.exec(select(Message).where(Message.session_id == session.id)).all():
         db.delete(m)
+    db.flush()
     db.delete(session)
     db.commit()
